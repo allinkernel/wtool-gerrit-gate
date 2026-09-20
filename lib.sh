@@ -24,7 +24,7 @@ GATE_ADMIN=admin
 GATE_VOLUME_PARTS="git etc db index cache"
 
 gate_die ()  { printf 'gerrit-gate: %s\n' "$*" >&2; exit 1; }
-gate_info () { printf '%s\n' "$*"; }
+gate_info () { printf '%s\n' "$*" 2>/dev/null || true; }   # 被 head 截断时不刷 I/O error
 gate_warn () { printf 'gerrit-gate: %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
