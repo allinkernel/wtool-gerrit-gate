@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  tools/gerrit-gate —— 给 repo 工作区装一道"检视闸门"：docker 里跑一台 Gerrit
+  （web UI 就是 PolyGerrit），改动先推 refs/for/main，人 +2 并 submit 之后
+  才允许推回 GitHub。
+
+  **刻意做成独立项目**：只有 `wtool install tools/gerrit-gate` 之后才会有
+  `gerrit-gate` 命令和 ggcp/gchk/gq/gpush。不装它就没有任何影响 ——
+  它也不往这个仓库里放任何二进制/镜像（镜像从 Docker Hub 拉，站点数据在
+  docker 命名卷里，见 README 的"占地"一节）。
+
+  两件事分开表达：
+    * <env>  —— 客户端命令（ggcp/gchk/gq/gpush）。zsh 和 bash 各一份，
+                 内容等价（受众里有人没装 zsh）。
+    * scripts/install.sh —— wtool.xml 表达不了的那件事：把 bin/gerrit-gate
+                 软链进 $WTOOL_PREFIX/bin（那目录由引擎保证在 PATH 上）。
+-->
+<wtool schema="1" id="tools/gerrit-gate" priority="46">
+
+  <env src="env.zsh"  shells="zsh"/>
+  <env src="env.bash" shells="bash"/>
+
+  <!-- 没有构建步骤：源码包就是产物 -->
+  <publish kind="source"/>
+
+</wtool>

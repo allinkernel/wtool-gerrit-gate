@@ -10,6 +10,10 @@ set -eu
 self=$0
 [ -L "$self" ] && self=$(readlink -f "$self")
 here=$(cd -- "$(dirname -- "$self")" && pwd)
+# 工具根目录：主题、插件、python 小工具都相对它找（原来默认指向
+# ~/.local/share/gerrit-gate，独立成项目之后就是项目自己）
+GERRIT_GATE_HOME=${GERRIT_GATE_HOME:-$here}
+export GERRIT_GATE_HOME
 . "$here/lib.sh"
 
 # ---------------------------------------------------------------------------

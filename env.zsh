@@ -1,6 +1,7 @@
-# gerrit.zsh —— 检视闸门的客户端命令（用户级；任何 repo 工作区都能用）
+# env.zsh —— 检视闸门的客户端命令（zsh 版）
 #
-# 由 ~/.zshrc 里那段 gerrit-gate 块 source。提供：
+# 由 wtool 的块 source：WTOOL_PROJECT_DIR = ~/.wtool/links/tools/gerrit-gate。
+# 提供：
 #   ggcp <change> [patchset]   把 gerrit 上的某个提交（指定 patchset）抓回本地、cd 到对应仓库、cherry-pick
 #   gchk <change>              看它 +2 了没 / merged 了没（退出码 0 = 可以推 main）
 #   gq   <change>              change 摘要（gq -r 出原始 JSON）
@@ -8,17 +9,15 @@
 #
 # 服务器地址从"当前 repo 工作区"的 .gerrit/client.conf 读（gerrit-gate setup 写的），
 # 也可以用环境变量覆盖：
-#   WTOOL_GERRIT_HOST / _PORT / _USER / _SSH_KEY  （兼容老名字）
+#   WTOOL_GERRIT_HOST / _PORT / _USER / _SSH_KEY
 #
-# 这个文件不定义 cs/ct/cnp/cdd —— 那些是 wtool 的 tools/repo 项目的事，
-# 别在这里把人家的命令覆盖掉。
+# env.bash 是等价的一份（给没装 zsh 的机器）。两份必须同改。
 
-# 工具位置（my_repo.py / gerrit_query.py 随 gerrit-gate 一起装）
-GERRIT_GATE_HOME=${GERRIT_GATE_HOME:-$HOME/.local/share/gerrit-gate}
-export GERRIT_GATE_HOME
+# 工具位置：本项目根（install 之后 ~/.wtool/links/tools/gerrit-gate 指向它）
+GERRIT_GATE_DIR=${WTOOL_PROJECT_DIR:-$HOME/.wtool/links/tools/gerrit-gate}
 
-_gg_manifest_tool () { print -r -- ${GERRIT_GATE_HOME}/my_repo.py }
-_gg_query_tool ()    { print -r -- ${GERRIT_GATE_HOME}/gerrit_query.py }
+_gg_manifest_tool () { print -r -- ${GERRIT_GATE_DIR}/my_repo.py }
+_gg_query_tool ()    { print -r -- ${GERRIT_GATE_DIR}/gerrit_query.py }
 
 # 往上找含 .repo 的目录（和 wtool 的 css 同义，只是不抢它的名字）
 _gg_ws () {

@@ -1,0 +1,25 @@
+#!/bin/sh
+# gerrit-gate 的入口。scripts/install.sh 会把它软链到 $WTOOL_PREFIX/bin/gerrit-gate。
+#
+# 它只负责"找到项目里的真正实现"：
+#   1. 优先走稳定地址 ~/.wtool/links/tools/gerrit-gate（wtool install 建的，
+#      工作区搬到哪、装到哪台机器都一样）；
+#   2. 没有稳定地址（比如有人直接把 bin/gerrit-gate 拷进 PATH）就按脚本自身
+#      位置往上找一格 —— 也就是项目根。
+set -eu
+
+stable="$HOME/.wtool/links/tools/gerrit-gate/gerrit-gate.sh"
+if [ -x "$stable" ]; then
+    exec "$stable" "$@"
+fi
+
+self=$0
+[ -L "$self" ] && self=$(readlink -f "$self")
+root=$(cd -- "$(dirname -- "$self")/.." && pwd)
+if [ -x "$root/gerrit-gate.sh" ]; then
+    exec "$root/gerrit-gate.sh" "$@"
+fi
+
+printf '%s\n' "gerrit-gate: 找不到实现（$stable 和 $root/gerrit-gate.sh 都不在）" >&2
+printf '%s\n' "  先 wtool install tools/gerrit-gate，或者直接跑 <项目>/gerrit-gate.sh" >&2
+exit 1

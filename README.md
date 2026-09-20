@@ -1,197 +1,129 @@
-# gerrit-gate —— 用户级"检视闸门"
+# tools/gerrit-gate —— 检视闸门（docker 里的 Gerrit）
 
-**给任何 repo 管理的工作区装一道 Gerrit 检视闸门**：改动先推到本机 Gerrit
-（`refs/for/main`），人 +2 并 submit 之后，才允许推回 GitHub。
+一句话：**给任意 repo 工作区装一台本机 Gerrit**（web UI 就是 PolyGerrit），
+改动先推 `refs/for/main`，人 +2 并 submit 之后才允许推回 GitHub。
 
-它不是某个项目的配置，是**用户级**的：
+```
+ds_dev 分支 --git push polygerrit HEAD:refs/for/main--> Gerrit change
+                                                            │ 人在网页上 Code-Review +2
+                                                            ▼
+                                              submit（合并进 Gerrit 的 main）
+                                                            │  gchk <change> == 0
+                                                            ▼
+                                                推回 GitHub 的 main
+```
 
-| 在哪 | 是什么 |
-|---|---|
-| `~/.local/share/gerrit-gate/` | 工具本体（这份目录） |
-| `~/.local/bin/gerrit-gate` | 入口（软链到上面） |
-| `~/.dsh/AGENTS.md` | **给所有 agent 看的规则**：在 repo 工作区里该怎么做 |
-| `~/.zshrc` 里的 `gerrit-gate` 块 | 交互命令 `ggcp` / `gchk` / `gq` / `gpush` |
-| `<工作区>/.gerrit/` | **运行期状态**：实例配置、两把 ssh key、客户端配置、admin 密码 |
+## 为什么是独立项目
 
-**运行期状态一律放工作区里**，因为给 agent 用的沙箱通常只允许它写自己的
-workspace —— 这样任何 agent 在自己的工作区里就能把闸门装起来，不需要写 `$HOME`。
-
-## 一条命令装好
+* **不装它 = 没有 `gerrit-gate` 命令，也没有任何容器/镜像**。
+* 仓库里**只有文本**（脚本 + CSS + 文档，约 60KB），**一个二进制都没有**。
+* 镜像从 Docker Hub 拉，站点数据在 docker 命名卷里，都不进仓库。
 
 ```sh
-cd <任意 repo 工作区>            # 往上能找到 .repo 的那种
-gerrit-gate all                 # up + bootstrap + import + setup（幂等，随时可重跑）
+wtool install tools/gerrit-gate     # -> $WTOOL_PREFIX/bin/gerrit-gate + rc 里的 env 块
+wtool uninstall tools/gerrit-gate   # 反过来撤掉（容器/卷是 docker 的东西，见下）
 ```
 
-跑完它会打印你的登录链接。之后：
+不想连源码都下载？清单里这个项目带着 `groups="gerrit"`：
 
 ```sh
-gerrit-gate status              # 体检：容器/账号/项目/接线 + 链接
-gerrit-gate open                # 只要链接
-gerrit-gate list                # ~/self/* 下装了闸门的工作区都列出来
+repo init -g all,-gerrit ...        # 不下载检视闸门这套
 ```
 
-## 日常流程
+## 技术细节：这套东西到底由什么组成
 
-```sh
-cd <某个仓库>                    # 每个仓库都有 ds_dev 分支，改动写在它上面
-git add -A && git commit         # Change-Id 由 commit-msg hook 补
-git push polygerrit HEAD:refs/for/main    # 送检，输出里就有 change 链接
-gchk <change>                    # 退出码 0 = 人已 +2 且已 merged
-```
+| 东西 | 放在哪 | 实测大小 | 谁产生 | 进 git 吗 |
+|---|---|---|---|---|
+| 工具源码 | 本项目仓库 | ~60KB 文本 | —— | **是** |
+| 容器镜像 | Docker Hub `gerritcodereview/gerrit:3.14.3-ubuntu24` | 1.21GB（解包后） | `gerrit-gate up` 时由 docker 拉 | 否 |
+| 容器可写层 | docker 自己的存储 | 约 90MB | 同上 | 否 |
+| 站点数据 | docker 命名卷 `<实例>-{git,etc,db,index,cache,plugins,static}` | 起手约 9MB，随仓库/评审长大 | `gerrit-gate all` | 否 |
+| 客户端状态 | `<工作区>/.gerrit/`（keys、client.conf、gate.conf、admin 密码） | ~30KB | `gerrit-gate setup` | 否（工作区根不是仓库） |
 
-`gchk` 返回 0 之后，才把 Gerrit 的 main 推回 GitHub：
+**镜像不是以二进制形式保存的**：`up` 那一步就是 `docker run <镜像标签>`，
+仓库里没有 tar、没有离线包、没有 base64。换机器时镜像由 registry 提供。
 
-```sh
-cd <某个仓库>
-git fetch polygerrit main
-git push origin FETCH_HEAD:main          # remote 名看 git remote -v
-```
-
-**清单仓例外**：Gerrit 的 `main` 对应 GitHub 上的清单分支（wtool 是 `wtool`）：
-
-```sh
-cd <工作区>/.repo/manifests
-git fetch polygerrit main
-git push origin FETCH_HEAD:wtool
-```
-
-## 每个工作区一台自己的 Gerrit
-
-| 东西 | 默认 | 说明 |
-|---|---|---|
-| 容器 | `gerrit-<工作区名>` | `--restart unless-stopped`；也可以在一份配置里改成别的名字 |
-| 端口 | 8080/29418 起，第一对空闲的 | **只绑 127.0.0.1**，不暴露到局域网 |
-| 卷 | `gerrit-<工作区名>-{git,etc,db,index,cache}` | 站点数据；容器删了数据还在 |
-| 镜像 | `gerritcodereview/gerrit:3.14.3-ubuntu24` | 官方镜像，自带 JDK21 |
-| 挂载 | `<工作区>:/workspace:ro` | 只读挂进去 |
-
-覆盖默认值就改 `<工作区>/.gerrit/gate.conf`（`gerrit-gate all` 第一次会生成它）：
-
-```sh
-container=docker24          # wtool 沿用了当年手起的容器
-web_port=8080
-ssh_port=29418
-volumes=docker24
-keys_dir=/home/mindul/self/wtool/.gerrit/keys
-reviewer=mindul             # 人（+2 的那个）
-agent=dsh-agent             # 助手账号
-skip=editor/astronvim_v5/nvim shell/oh-my-zsh   # 不导入的项目
-```
-
-> 镜像在 Dockerfile 里声明了 `VOLUME /var/gerrit/{git,etc,db,index,cache}`。
-> 不显式给命名卷，docker 会给这些子路径各建一个**匿名卷**把它们盖住：
-> 站点数据在匿名卷里，你以为挂上的命名卷是空的，下次删容器就找不着了。
-> 所以这里五个路径都显式给卷。
-
-## 账号与权限模型
-
-| 账号 | 是谁 | 能干什么 |
-|---|---|---|
-| `admin` | 引导账号（Gerrit init 建的） | 管服务器、导入历史。日常不用它 |
-| `reviewer`（默认 `mindul`） | **人** | Administrators：能 +2、能 submit |
-| `agent`（默认 `dsh-agent`） | 助手 | **只能推 `refs/for/*`**，推不了 `refs/heads/*` |
-
-闸门不是"submit 权限"，是 **Code-Review +2 这个 submit-requirement**：
+### 一台实例的构成
 
 ```
-[submit-requirement "Code-Review"]
-    submittableIf = label:Code-Review=MAX AND -label:Code-Review=MIN
+docker run -d --name gerrit-<工作区名> --restart unless-stopped
+  -p 127.0.0.1:<web>:8080  -p 127.0.0.1:<ssh>:29418     # 只绑本机，不暴露
+  -v <实例>-git:/var/gerrit/git   ...   共 7 个命名卷（git etc db index cache plugins static）
+  -v <工作区>:/workspace:ro                              # 只读挂进去，方便在容器里对着清单干活
+  -e CANONICAL_WEB_URL=http://127.0.0.1:<web>/
+  gerritcodereview/gerrit:3.14.3-ubuntu24
 ```
 
-默认 ACL 里只有 Administrators 能投 +2。`submit` 权限虽然放给了 Registered Users，
-但**没有 +2 谁都 submit 不了**（助手试过，Gerrit 回的是
-`Change N is not ready: submit requirement 'Code-Review' is unsatisfied.`）。
+* 端口从 8080/29418 往上找第一对空闲的（`gerrit-gate list` 看所有实例）
+* 实例配置在 `<工作区>/.gerrit/gate.conf`（容器名、端口、卷名、skip 列表…），
+  可以手改；wtool 那台沿用了当初手起的 `docker24`
+* **账号与权限**：账号存在 `All-Users.git`（在 git 卷里）；`admin` 是 init 建的
+  引导账号（它的 ssh key 只能停机时直接写 NoteDb 塞进去），`reviewer`
+  （默认 `mindul`）进 Administrators 负责 +2，`agent`（默认 `dsh-agent`）
+  只能推 `refs/for/*`
+* **闸门本体**是 `Code-Review +2` 这个 submit-requirement，不是 submit 权限：
+  没有 +2，谁都 submit 不了
+* **UI 主题**：Gerrit 只允许用 CSS 变量改外观，所以有一个只装一次的插件
+  `plugins/wtooltheme.js` + 一个 `static/wtool-theme.css`（都在卷里）；
+  换主题 = 换那个 CSS 文件，刷新浏览器即可
 
-登录：`http://127.0.0.1:<web_port>/login/?user_name=<reviewer>`
-（dev 模式，账号由 `bootstrap` 建好，点进去就是你自己）
-
-## 命令速查
+### 客户端
 
 | 命令 | 作用 |
 |---|---|
-| `gerrit-gate all [ws]` | 一条龙：起容器 + 账号权限 + 导入 + 接线 |
-| `gerrit-gate up [ws]` | 起/建容器（幂等） |
-| `gerrit-gate bootstrap [ws]` | 账号、密钥、ACL |
-| `gerrit-gate import [ws]` | 每个仓库建项目 + 导入当前分支到 `<branch>` |
-| `gerrit-gate setup [ws]` | 每个仓库加 `polygerrit` remote + `ds_dev` + `commit-msg` hook |
-| `gerrit-gate status [ws]` | 体检 + 给用户的链接 |
-| `gerrit-gate open [ws]` / `list` | 链接 / 所有实例 |
-| `ggcp <change> [patchset]` | 把 Gerrit 上的提交抓回本地并 cherry-pick（自动 cd 到对应仓库） |
-| `gchk <change>` | +2 了没 / merged 了没（0 = 可以推 main） |
-| `gq [-r] <change>` | change 摘要 / 原始 JSON |
-| `gpush [remote]` | 推当前 HEAD 到 `refs/for/<清单声明的分支>` |
+| `gerrit-gate up/bootstrap/import/setup/all/status/open/list/theme` | 服务端 |
+| `ggcp <change> [patchset]` | 把 Gerrit 上的提交抓回本地、cd 到对应仓库、cherry-pick |
+| `gchk <change>` | +2 了没 / merged 了没（退出码 0 = 可以推 main） |
+| `gq [-r] <change>` / `gpush` | 摘要 / 送检 |
 
-`ggcp` 认这几种写法：`ggcp 1234`、`ggcp 1234 1`、`ggcp 1234/2`、
-`https://host/c/proj/+/1234/2`、老式 `https://host/#/c/1234/2`。
-**patchset 不猜**：不给就用 current，指定的不存在就报"现有: 1,2"。
+后四个是 `env.zsh` / `env.bash` 里的函数（**两个 shell 各一份、内容等价** ——
+没装 zsh 的机器也能用）。`my_repo.py` / `gerrit_query.py` 随项目走，
+既不依赖 wtool 也不依赖别的项目。
 
-## 换 UI 主题
+服务器地址从"当前 repo 工作区"的 `.gerrit/client.conf` 读，
+也可以用 `WTOOL_GERRIT_HOST` / `_PORT` / `_USER` / `_SSH_KEY` 覆盖。
+
+## 在新机器上复现
 
 ```sh
-gerrit-gate theme              # 列出可选主题 + 当前是哪个
-gerrit-gate theme compact      # 换（然后刷新浏览器 Ctrl-Shift-R）
-gerrit-gate theme compact+dark # 也可以自己组合
+# 1) 引擎（一次性）：见 wtool-base 的 README / guide
+# 2) 拿到这个项目并安装
+repo sync tools/gerrit-gate          # 或 git clone 到 tools/gerrit-gate
+wtool install tools/gerrit-gate      # 命令进 PATH、env 进 rc
+# 3) 在任意 repo 工作区里一条龙
+cd ~/self/<某个工作区>
+gerrit-gate all                      # 拉镜像 → 起容器 → 建账号 → 导入仓库 → 建 ds_dev
+gerrit-gate open                     # 打印你的登录链接，浏览器打开就能审
 ```
 
-| 主题 | 效果 |
+依赖：`docker`、`bash`、`python3`、`git`、`ssh`、`curl`。
+**不需要 zsh**（这就是 env.bash 存在的理由）。全程只需要能连 Docker Hub。
+
+## 独占性与清理
+
+| 你想 | 怎么做 |
 |---|---|
-| `default` | 原版 PolyGerrit |
-| `compact` | **紧凑**：正文 14px→13px、行高 20px→18px、间距收紧、圆角 4px→2px、去掉浮层阴影。只动密度不动颜色，所以跟深浅色都能共存 |
-| `dark` | 深色（用 Gerrit 自带的深色配色，364 个变量原样搬过来） |
-| `compact+dark` | 深色 + 紧凑 |
-| `high-contrast` | 黑白高对比（正文纯黑、边框变实、选中亮黄） |
+| 只是不想用它 | 什么都不用做：不跑 `gerrit-gate all` 就没有容器/镜像 |
+| 停掉但留着数据 | `docker stop <实例>` |
+| 删容器（数据留着） | `docker rm -f <实例>` |
+| 连站点数据一起删 | `docker volume rm <实例>-{git,etc,db,index,cache,plugins,static}` |
+| 连镜像一起删 | `docker rmi gerritcodereview/gerrit:3.14.3-ubuntu24` |
+| 只撤命令和 rc 块 | `wtool uninstall tools/gerrit-gate` |
 
-原理（Gerrit 的规矩，不是我们定的）：**PolyGerrit 只允许用 CSS 变量改外观**。
-所以 `theme` 做两件事 —— 把 `plugins/wtooltheme.js`（只装一次，负责把
-`/static/wtool-theme.css` 塞进页面）放进 plugins 卷，把主题 CSS 写进 static 卷。
-换主题只是换那个 CSS 文件，刷新即可；插件第一次装要重启一次 Gerrit。
-两个目录都挂成命名卷（`<实例>-plugins` / `<实例>-static`），所以删容器重建不会丢。
-
-`~/.local/share/gerrit-gate/themes/` 里一个主题一个 CSS；想自己改/加，
-直接编辑那个目录（`themes/README.md` 讲了 `dark.css` 是怎么从 Gerrit 里取出来的）。
-
-对比截图在 `<工作区>/.gerrit/ui/`（每个主题一张列表页 + 一张改动页）。
+`wtool uninstall` **只管命令和 rc 块，不碰 docker** —— 那是 docker 的地盘，
+删容器/卷/镜像得你说了算。
 
 ## 测试
 
 ```sh
-sh ~/.local/share/gerrit-gate/tests/e2e-wtest.sh          # 跑完停容器
-sh ~/.local/share/gerrit-gate/tests/e2e-wtest.sh --keep    # 跑完留着
+sh tests/e2e-wtest.sh          # 造一个最小 repo 工作区，全流程 13 条断言（会真起容器）
+sh tests/e2e-wtest.sh --keep   # 跑完别停容器
+sh tests/env_test.sh           # env.zsh / env.bash 同一张用例表（不连网）
 ```
 
-它会在 `~/self/wtest` 造一个最小的 repo 工作区（清单 + hello/world 两个仓库 +
-本地裸仓当 GitHub），**完全走用户级工具**装一遍闸门，然后验：
-接线（remote/ds_dev/hook）→ 送检拿到 change → `gchk` 说没 +2 →
-助手 submit 被服务端拒 → `ggcp` 抓回本地 cherry-pick → `status`/`list`。
+## 历史
 
-## 排错
-
-| 现象 | 原因 / 怎么办 |
-|---|---|
-| `gerrit-gate: 当前目录往上找不到 .repo` | 站错地方了；或者显式给工作区：`gerrit-gate status ~/self/wblog` |
-| 容器起不来 | `docker logs gerrit-<ws>`；端口被占的话改 `.gerrit/gate.conf` 里的 `web_port`/`ssh_port` |
-| `ggcp` 说"没有 gerrit 服务器信息" | 这个工作区还没 `gerrit-gate setup`，或者不在工作区里 |
-| `git push polygerrit` 报 `email not registered` | 你的 git 邮箱没登记到 agent 账号上；`gerrit-gate bootstrap` 会登记 `git config --global user.email` |
-| 某个仓库推不进 Gerrit | 看 `import` 的输出：浅克隆（git 不允许从浅克隆推）/ 上游镜像里可能有 JGit 不收的老对象（零填充 filemode）；这类项目写进 `.gerrit/gate.conf` 的 `skip` |
-| 切换/新增项目后 | `gerrit-gate import && gerrit-gate setup`（都是幂等的） |
-
-## 和 wtool 仓库里那份的关系
-
-wtool 仓库里还有一份早期的**项目内**版本（`bootstrap/scripts/gerrit/`，
-`up.sh` / `bootstrap.sh` / `import.sh` / `local-setup.sh`，已作为 Gerrit change 23 送检）。
-它只服务 wtool 一个工作区，容器名/端口/卷名都写死在文档里；
-功能是用户级这套的子集。
-
-**以用户级这份（`gerrit-gate`）为准。** 项目内那份留着当"想在自己项目里也带一套"
-的参考，将来可以删掉。
-
-## 已知边界
-
-- 只支持 **Gerrit 官方 docker 镜像 + DEVELOPMENT_BECOME_ANY_ACCOUNT**（本机自用）。
-  要对外的服务器别用这套。
-- 每个工作区一台 Gerrit，一共 N 台容器，每台约 1GB 内存。
-- "把 Gerrit 的 main 推回 GitHub" 目前是手动（或 agent 手动）两步，
-  没做 replication 插件自动同步。
-- 工具本身没有远端仓库（用户级配置），本目录里 `git init` 过一份，
-  改动可以 `git log` 看历史。
+这套东西最早是 wtool 项目内的 `bootstrap/scripts/gerrit/`（只服务 wtool 一个
+工作区），后来提到用户级 `~/.local/share/gerrit-gate/`（能服务所有工作区，
+但不在任何仓库里、没法复现），现在收编成这个独立项目。
+`bootstrap/scripts/gerrit/` 那份是子集，可以删。
