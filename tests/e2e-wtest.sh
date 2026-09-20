@@ -160,7 +160,9 @@ if [ -n "$change" ]; then
 
     echo "== ggcp 把 change 抓回本地 =="
     git -C "$WS/hello" checkout -q -B tmp-ggcp main
-    if "$ZSH_BIN" -c "source $GERRIT_GATE_HOME/gerrit.zsh; cd $WS; ggcp $change 1" 2>&1 | tail -3; then
+    # 注意 source 的是 env.zsh（项目里的客户端命令）；source 失败要当场报出来，
+    # 不然"ggcp 没定义"会被 tail 的退出码掩盖成"跑过了"（这次就吃过）
+    if "$ZSH_BIN" -c "source $GERRIT_GATE_HOME/env.zsh || exit 99; type ggcp >/dev/null 2>&1 || exit 98; cd $WS; ggcp $change 1" 2>&1 | tail -3; then
         if [ "$(git -C "$WS/hello" rev-parse --abbrev-ref HEAD)" = tmp-ggcp ] &&
            git -C "$WS/hello" log --oneline -1 | grep -q "wtest: 送检改动"; then
             ok "ggcp 抓回来并 cherry-pick 到 tmp-ggcp"
