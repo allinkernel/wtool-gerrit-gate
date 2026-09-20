@@ -80,7 +80,12 @@ gate_load () {
         GATE_VOL=gerrit-$GATE_NAME
         GATE_IMAGE_I=$GATE_IMAGE_DEFAULT
         gate_alloc_ports
-        gate_write_conf
+        if [ "${GATE_DRY:-0}" = 1 ]; then
+            # --dry-run 一个字节都不写：连实例配置也只是在内存里算出来
+            gate_info "[dry] 实例会建成 $GATE_CONTAINER（网页 $GATE_WEB / ssh $GATE_SSH，卷 $GATE_VOL-*）"
+        else
+            gate_write_conf
+        fi
     fi
     [ -n "$GATE_WEB" ] || GATE_WEB=$GATE_WEB_BASE
     [ -n "$GATE_SSH" ] || GATE_SSH=$GATE_SSH_BASE

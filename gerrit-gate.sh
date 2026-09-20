@@ -131,8 +131,12 @@ account_exists () {   # <username>
 cmd_bootstrap () {
     gate_require_docker
     [ "$DRY" = 1 ] || { cmd_up; }
-    mkdir -p "$GATE_KEYS"
-    chmod 700 "$GATE_KEYS" 2>/dev/null || true
+    if [ "$DRY" = 1 ]; then
+        gate_info "[dry] 密钥目录 $GATE_KEYS（会生成 gerrit-admin_rsa / ${GATE_AGENT}_rsa）"
+    else
+        mkdir -p "$GATE_KEYS"
+        chmod 700 "$GATE_KEYS" 2>/dev/null || true
+    fi
 
     gate_ensure_key "$(gate_admin_key)" "gerrit-admin@$GATE_NAME" || true
     gate_ensure_key "$(gate_agent_key)" "$GATE_AGENT@$GATE_NAME" || true
@@ -526,6 +530,7 @@ main () {
         list) parse_args "$@"; cmd_list; exit 0 ;;
     esac
     parse_args "$@"
+    GATE_DRY=$DRY
     resolve_ws
     case $cmd in
         # 只有"会动手"的子命令才允许生成实例配置；
