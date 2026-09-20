@@ -268,6 +268,23 @@ git update-ref "$ref" "$commit"
 # ---------------------------------------------------------------------------
 # 3. import：建项目 + 导入 main
 # ---------------------------------------------------------------------------
+# 从 remote URL 推 gerrit 项目名：
+#   ssh://git@github.com/allinkernel/w_manifests.git -> allinkernel/w_manifests
+#   git@github.com:allinkernel/w_manifests.git       -> allinkernel/w_manifests
+# 清单仓不在自己的清单里，名字只能这么来。**别只取 basename** —— 那会造出
+# 一个 allinkernel/w_manifests 之外的第二个项目（踩过：Gerrit 里出现重复项目，
+# 清单改动推到了一个没人看的新项目上）。
+gate_project_name_from_url () {
+    local url=$1 name
+    case $url in
+        *://*) name=${url#*://}; name=${name#*/} ;;
+        *:*)   name=${url#*:} ;;
+        *)     name=$url ;;
+    esac
+    name=${name%.git}
+    printf '%s\n' "$name"
+}
+
 cmd_import () {
     gate_require_docker
     [ "$DRY" = 1 ] || gate_wait_ready "$GATE_WEB" || gate_die "gerrit 没起来，先 gerrit-gate up"
@@ -331,7 +348,7 @@ cmd_import () {
     # （踩过：退回 main，然后 temp clone 报 "Remote branch main not found"）。
     manifests="$GATE_WS/.repo/manifests"
     if [ -d "$manifests/.git" ]; then
-        mname=$(git -C "$manifests" remote get-url origin 2>/dev/null | sed -e 's#.*/##' -e 's#\.git$##')
+        mname=$(gate_project_name_from_url "$(git -C "$manifests" remote get-url origin 2>/dev/null || true)")
         [ -n "$mname" ] || mname=$GATE_NAME-manifests
         murl=$(git -C "$manifests" remote get-url origin 2>/dev/null || true)
         hurl=$(printf '%s' "$murl" | sed -e 's#^ssh://git@github.com/#https://github.com/#' \
@@ -455,7 +472,7 @@ EOF
 
     manifests="$GATE_WS/.repo/manifests"
     if [ -d "$manifests/.git" ]; then
-        mname=$(git -C "$manifests" remote get-url origin 2>/dev/null | sed -e 's#.*/##' -e 's#\.git$##')
+        mname=$(gate_project_name_from_url "$(git -C "$manifests" remote get-url origin 2>/dev/null || true)")
         [ -n "$mname" ] || mname=$GATE_NAME-manifests
         wire_one "$manifests" "$mname" "清单仓"
     fi
