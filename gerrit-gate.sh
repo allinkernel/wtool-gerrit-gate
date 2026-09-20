@@ -324,7 +324,11 @@ cmd_import () {
         return 0
     }
 
-    # --- 清单仓（不在自己的清单里）
+    # --- 清单仓（不在自己的清单里）---
+    #
+    # 这里比"项目"麻烦：当前分支可能是 ds_dev（没有 upstream），而 GitHub 上
+    # 那个仓的分支名是 wtool/wblog/... —— 所以分支名按下面的顺序找，别只看 @{u}
+    # （踩过：退回 main，然后 temp clone 报 "Remote branch main not found"）。
     manifests="$GATE_WS/.repo/manifests"
     if [ -d "$manifests/.git" ]; then
         mname=$(git -C "$manifests" remote get-url origin 2>/dev/null | sed -e 's#.*/##' -e 's#\.git$##')
@@ -332,32 +336,42 @@ cmd_import () {
         murl=$(git -C "$manifests" remote get-url origin 2>/dev/null || true)
         hurl=$(printf '%s' "$murl" | sed -e 's#^ssh://git@github.com/#https://github.com/#' \
                                            -e 's#^git@github.com:#https://github.com/#')
-        mbranch=$(git -C "$manifests" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null |
-                  sed -e 's#^[^/]*/##')
+        # 1) repo 自己记的（manifest 项目那条 branch.<默认分支>.merge）
+        mbranch=$(git -C "$manifests" config --get branch.default.merge 2>/dev/null |
+                  sed -e 's#^refs/heads/##')
+        # 2) 当前分支的 upstream；3) 兜底 main
+        [ -n "$mbranch" ] || mbranch=$(git -C "$manifests" rev-parse --abbrev-ref --symbolic-full-name \
+                                       '@{u}' 2>/dev/null | sed -e 's#^[^/]*/##')
         [ -n "$mbranch" ] || mbranch=main
-        if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = true ]; then
-            if [ "$DRY" = 1 ]; then
-                gate_info "[dry] 清单仓是浅克隆：先补历史，补不全就临时克隆一份来推"
-            else
-                gate_info "==> 清单仓是浅克隆，先补历史"
-                git -C "$manifests" fetch --unshallow >/dev/null 2>&1 || true
-                if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = true ] &&
-                   [ "$hurl" != "$murl" ]; then
-                    git -C "$manifests" fetch --unshallow "$hurl" >/dev/null 2>&1 || true
+
+        if has_project "allinkernel/$mname" 2>/dev/null || true; then :; fi
+        if [ "$DRY" = 0 ] && has_branch "$mname" main 2>/dev/null; then
+            gate_info "跳过 清单仓（$mname/main 已导入），本地怎么浅都不管了"
+        else
+            if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = true ]; then
+                if [ "$DRY" = 1 ]; then
+                    gate_info "[dry] 清单仓是浅克隆：先补历史，补不全就临时克隆一份来推"
+                else
+                    gate_info "==> 清单仓是浅克隆，先补历史（push 不允许从浅克隆发）"
+                    git -C "$manifests" fetch --unshallow >/dev/null 2>&1 || true
+                    if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = true ] &&
+                       [ "$hurl" != "$murl" ]; then
+                        git -C "$manifests" fetch --unshallow "$hurl" >/dev/null 2>&1 || true
+                    fi
                 fi
             fi
-        fi
-        if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = false ]; then
-            import_one "$manifests" "$mname" main "清单仓"
-        elif [ "$DRY" = 1 ]; then
-            gate_info "[dry] 清单仓补不全：临时 clone 完整的一份再推 $mname"
-        else
-            gate_info "==> 清单仓补不全，临时克隆一份完整的来推"
-            if git clone --bare -q -b "$mbranch" "${hurl:-$murl}" "$work/manifests.git"; then
-                import_one "$work/manifests.git" "$mname" main "清单仓(临时克隆)"
+            if [ "$(git -C "$manifests" rev-parse --is-shallow-repository)" = false ]; then
+                import_one "$manifests" "$mname" main "清单仓"
+            elif [ "$DRY" = 1 ]; then
+                gate_info "[dry] 清单仓补不全：临时 clone 一份完整的再推 $mname（分支 $mbranch）"
             else
-                gate_warn "!! 临时克隆清单仓失败（$hurl），跳过"
-                failed=$((failed + 1))
+                gate_info "==> 清单仓补不全，临时克隆一份完整的来推（分支 $mbranch）"
+                if git clone --bare -q -b "$mbranch" "${hurl:-$murl}" "$work/manifests.git"; then
+                    import_one "$work/manifests.git" "$mname" main "清单仓(临时克隆)"
+                else
+                    gate_warn "!! 临时克隆清单仓失败（${hurl:-$murl} -b $mbranch），跳过"
+                    failed=$((failed + 1))
+                fi
             fi
         fi
     fi
