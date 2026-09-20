@@ -126,6 +126,33 @@ skip=editor/astronvim_v5/nvim shell/oh-my-zsh   # 不导入的项目
 `https://host/c/proj/+/1234/2`、老式 `https://host/#/c/1234/2`。
 **patchset 不猜**：不给就用 current，指定的不存在就报"现有: 1,2"。
 
+## 换 UI 主题
+
+```sh
+gerrit-gate theme              # 列出可选主题 + 当前是哪个
+gerrit-gate theme compact      # 换（然后刷新浏览器 Ctrl-Shift-R）
+gerrit-gate theme compact+dark # 也可以自己组合
+```
+
+| 主题 | 效果 |
+|---|---|
+| `default` | 原版 PolyGerrit |
+| `compact` | **紧凑**：正文 14px→13px、行高 20px→18px、间距收紧、圆角 4px→2px、去掉浮层阴影。只动密度不动颜色，所以跟深浅色都能共存 |
+| `dark` | 深色（用 Gerrit 自带的深色配色，364 个变量原样搬过来） |
+| `compact+dark` | 深色 + 紧凑 |
+| `high-contrast` | 黑白高对比（正文纯黑、边框变实、选中亮黄） |
+
+原理（Gerrit 的规矩，不是我们定的）：**PolyGerrit 只允许用 CSS 变量改外观**。
+所以 `theme` 做两件事 —— 把 `plugins/wtooltheme.js`（只装一次，负责把
+`/static/wtool-theme.css` 塞进页面）放进 plugins 卷，把主题 CSS 写进 static 卷。
+换主题只是换那个 CSS 文件，刷新即可；插件第一次装要重启一次 Gerrit。
+两个目录都挂成命名卷（`<实例>-plugins` / `<实例>-static`），所以删容器重建不会丢。
+
+`~/.local/share/gerrit-gate/themes/` 里一个主题一个 CSS；想自己改/加，
+直接编辑那个目录（`themes/README.md` 讲了 `dark.css` 是怎么从 Gerrit 里取出来的）。
+
+对比截图在 `<工作区>/.gerrit/ui/`（每个主题一张列表页 + 一张改动页）。
+
 ## 测试
 
 ```sh

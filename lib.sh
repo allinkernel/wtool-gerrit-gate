@@ -21,7 +21,10 @@ GATE_SSH_BASE=${GERRIT_GATE_SSH_BASE:-29418}
 GATE_REVIEWER_DEFAULT=${GERRIT_GATE_REVIEWER:-mindul}
 GATE_AGENT_DEFAULT=${GERRIT_GATE_AGENT:-dsh-agent}
 GATE_ADMIN=admin
-GATE_VOLUME_PARTS="git etc db index cache"
+# plugins/static 也要卷：镜像只声明了 git/etc/db/index/cache，而主题插件
+# （plugins/wtooltheme.js）和主题 CSS（static/wtool-theme.css）正好落在这两个
+# 目录里 —— 不挂卷的话 `up.sh --recreate` 一跑主题就没了
+GATE_VOLUME_PARTS="git etc db index cache plugins static"
 
 gate_die ()  { printf 'gerrit-gate: %s\n' "$*" >&2; exit 1; }
 gate_info () { printf '%s\n' "$*" 2>/dev/null || true; }   # 被 head 截断时不刷 I/O error
@@ -230,4 +233,22 @@ gate_skip_reason () {   # <ws> <relpath> -> 打印原因并返回 0 / 返回 1
         [ "$gs" = "$2" ] && { printf '%s\n' "在 gate.conf 的 skip 列表里"; return 0; }
     done
     return 1
+}
+
+# ---------------------------------------------------------------------------
+# 卷里的小文件读写（主题插件/主题 CSS 走这条路，容器不一定要在跑）
+# ---------------------------------------------------------------------------
+gate_volume_write () {   # <卷名> <卷内路径> <本地文件>
+    docker run --rm -i -v "$1:/vol" --entrypoint sh "$GATE_IMAGE_I" \
+        -c "cat > /vol/$2" < "$3"
+}
+
+gate_volume_read () {    # <卷名> <卷内路径>
+    docker run --rm -v "$1:/vol" --entrypoint sh "$GATE_IMAGE_I" \
+        -c "cat /vol/$2 2>/dev/null || true"
+}
+
+gate_volume_exists () {  # <卷名> <卷内路径>
+    docker run --rm -v "$1:/vol" --entrypoint sh "$GATE_IMAGE_I" \
+        -c "test -e /vol/$2" >/dev/null 2>&1
 }

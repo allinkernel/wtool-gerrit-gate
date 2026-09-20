@@ -18,6 +18,8 @@ here=$(cd -- "$(dirname -- "$self")" && pwd)
 DRY=0
 WS_ARG=
 CHECKOUT=1
+RECREATE=0
+THEME_NAME=
 
 usage () {
     cat <<'EOF'
@@ -25,9 +27,11 @@ gerrit-gate —— 给 repo 工作区装一道检视闸门（本机 Gerrit，web
 
   gerrit-gate all   [工作区]      一次装好：up + bootstrap + import + setup（幂等）
   gerrit-gate up    [工作区]      起/建 Gerrit 容器（挂载该工作区，只绑 127.0.0.1）
+                                  加 --recreate 删了重建（数据在卷里，不丢）
   gerrit-gate bootstrap [工作区]  建账号、发密钥、配权限（幂等）
   gerrit-gate import [工作区]     每个仓库建 Gerrit 项目 + 导入 main（幂等）
   gerrit-gate setup [工作区]      每个仓库加 polygerrit remote + ds_dev + commit-msg hook
+  gerrit-gate theme [工作区] [主题]  换 UI 主题（不带主题名 = 列出可选的）
   gerrit-gate status [工作区]     体检：容器/账号/项目/接线，并打印给用户的链接
   gerrit-gate open  [工作区]      只打印登录链接 / 待检视链接
   gerrit-gate list                列出 ~/self/* 下装了闸门的工作区
@@ -48,6 +52,7 @@ parse_args () {
         case $a in
             --dry-run) DRY=1 ;;
             --no-checkout) CHECKOUT=0 ;;
+            --recreate) RECREATE=1 ;;
             -h|--help) usage; exit 0 ;;
             -*) gate_die "不认识的参数: $a" ;;
             *) WS_ARG=$a ;;
@@ -77,6 +82,10 @@ cmd_up () {
         return 0
     fi
     gate_ensure_volumes
+    if [ "$RECREATE" = 1 ] && [ "$(gate_container_state "$GATE_CONTAINER")" != absent ]; then
+        gate_info "==> 删掉旧容器 $GATE_CONTAINER 重建（数据都在卷里，不丢）"
+        docker rm -f "$GATE_CONTAINER" >/dev/null
+    fi
     case $(gate_container_state "$GATE_CONTAINER") in
         running)
             gate_info "==> $GATE_CONTAINER 已经在跑" ;;
@@ -451,6 +460,104 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# theme：换 UI 主题
+#
+# 原理：PolyGerrit 只允许用 CSS 变量改外观，官方钩子是插件的
+# styleApi().insertCSSRule()。所以这里做两件事：
+#   * 插件 plugins/wtooltheme.js（只装一次，负责把 /static/wtool-theme.css
+#     注入页面；CSS 里带 /*wtool:force-dark*/ 标记时再切到深色）
+#   * 主题 CSS static/wtool-theme.css（换主题 = 换这个文件，刷新浏览器即可）
+# 两个都在卷里（plugins / static），所以删容器重建也不会丢。
+# ---------------------------------------------------------------------------
+GATE_THEME_PLUGIN=wtooltheme.js
+GATE_THEME_CSS=wtool-theme.css
+
+theme_list () {
+    for f in "$GATE_HOME"/themes/*.css; do
+        [ -e "$f" ] || continue
+        b=$(basename "$f" .css)
+        printf '  %s\n' "$b"
+    done
+}
+
+theme_current () {
+    gate_volume_read "$GATE_VOL-static" "$GATE_THEME_CSS.name" | head -1
+}
+
+theme_compose () {   # <名字，可带 + 组合> -> stdout CSS
+    # "compact+dark" 这种组合按 + 拆开，直接把各段 cat 出来（别再拼字符串：
+    # 拼字符串时写 "\n" 会变成字面的反斜杠-n，CSS 解析器从那以后就崩了 —— 踩过）
+    local spec=$1 part f
+    local IFS=+
+    for part in $spec; do
+        case $part in
+            default) : ;;
+            *)
+                f="$GATE_HOME/themes/$part.css"
+                if [ ! -r "$f" ]; then
+                    gate_warn "没有这个主题: $part（可用的见 gerrit-gate theme）"
+                    return 1
+                fi
+                cat "$f"
+                ;;
+        esac
+    done
+}
+
+cmd_theme () {
+    gate_require_docker
+    local want=${THEME_NAME:-}
+
+    if [ -z "$want" ] || [ "$want" = list ]; then
+        gate_info "工作区   $GATE_WS（$GATE_CONTAINER）"
+        gate_info "当前主题 $(theme_current || true)"
+        gate_info ""
+        gate_info "可选主题："
+        theme_list
+        gate_info ""
+        gate_info "也可以自己组合：gerrit-gate theme compact+dark"
+        gate_info "换完刷新浏览器（Ctrl-Shift-R）就能看到"
+        return 0
+    fi
+
+    local css_file
+    css_file="$(gate_state_dir "$GATE_WS")/theme.css.tmp"
+    theme_compose "$want" > "$css_file" || { rm -f "$css_file"; return 1; }
+
+    if [ "$DRY" = 1 ]; then
+        gate_info "[dry] 装主题 $want：写 plugins/$GATE_THEME_PLUGIN + static/$GATE_THEME_CSS"
+        return 0
+    fi
+
+    # 插件只装一次；第一次装要重启 Gerrit 才会被加载
+    local need_restart=0 want_sum got_sum
+    want_sum=$(sha256sum < "$GATE_HOME/theme-plugin.js" | cut -d' ' -f1)
+    got_sum=$(gate_volume_read "$GATE_VOL-plugins" "$GATE_THEME_PLUGIN" | sha256sum | cut -d' ' -f1)
+    if [ "$want_sum" != "$got_sum" ]; then
+        if [ "$got_sum" = "$(printf '' | sha256sum | cut -d' ' -f1)" ]; then
+            gate_info "==> 装主题插件 plugins/$GATE_THEME_PLUGIN（第一次，需要重启 Gerrit）"
+        else
+            gate_info "==> 主题插件有更新，重装（需要重启 Gerrit）"
+        fi
+        gate_volume_write "$GATE_VOL-plugins" "$GATE_THEME_PLUGIN" "$GATE_HOME/theme-plugin.js"
+        need_restart=1
+    fi
+
+    gate_volume_write "$GATE_VOL-static" "$GATE_THEME_CSS" "$css_file"
+    printf '%s\n' "$want" > "$(gate_state_dir "$GATE_WS")/theme.name.tmp"
+    gate_volume_write "$GATE_VOL-static" "$GATE_THEME_CSS.name" "$(gate_state_dir "$GATE_WS")/theme.name.tmp"
+    rm -f "$css_file" "$(gate_state_dir "$GATE_WS")/theme.name.tmp"
+    gate_info "==> 主题已切换：$want"
+
+    if [ "$need_restart" = 1 ]; then
+        docker restart "$GATE_CONTAINER" >/dev/null
+        gate_wait_ready "$GATE_WEB" || gate_die "重启后没起来"
+        gate_info "==> Gerrit 重启完了"
+    fi
+    gate_info "    刷新浏览器（Ctrl-Shift-R）即可看到；想换回来：gerrit-gate theme <名字>"
+}
+
+# ---------------------------------------------------------------------------
 # status / open / list
 # ---------------------------------------------------------------------------
 cmd_status () {
@@ -497,6 +604,9 @@ EOF
     [ -f "$(gate_client_file "$GATE_WS")" ] &&
         gate_info "客户端   $(gate_client_file "$GATE_WS")" ||
         gate_info "客户端   还没有（gerrit-gate setup）"
+    if [ "$gst" = running ]; then
+        gate_info "UI 主题  $(theme_current 2>/dev/null || echo '(默认)')"
+    fi
 }
 
 cmd_open () {
@@ -528,14 +638,24 @@ main () {
     case $cmd in
         help|-h|--help) usage; exit 0 ;;
         list) parse_args "$@"; cmd_list; exit 0 ;;
+        theme)
+            # theme 的位置参数是"主题名 [工作区]"，和别的子命令不一样，单独解析
+            for a in "$@"; do
+                case $a in
+                    --dry-run) DRY=1 ;;
+                    -*) gate_die "不认识的参数: $a" ;;
+                    *) if [ -z "${THEME_NAME:-}" ]; then THEME_NAME=$a; else WS_ARG=$a; fi ;;
+                esac
+            done
+            ;;
+        *) parse_args "$@" ;;
     esac
-    parse_args "$@"
     GATE_DRY=$DRY
     resolve_ws
     case $cmd in
         # 只有"会动手"的子命令才允许生成实例配置；
         # status/open 是只读的 —— 别的 agent 的工作区不该被我们写脏
-        up|bootstrap|import|setup|all)
+        up|bootstrap|import|setup|all|theme)
             gate_load "$GATE_WS" --create ;;
         status|open)
             if ! gate_load "$GATE_WS"; then
@@ -547,6 +667,7 @@ main () {
     esac
     case $cmd in
         up)        cmd_up ;;
+        theme)     cmd_theme ;;
         bootstrap) cmd_bootstrap ;;
         import)    cmd_import ;;
         setup)     cmd_setup ;;

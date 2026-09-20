@@ -1,0 +1,24 @@
+/* high-contrast —— 黑白高对比（浅色基调）。
+ *
+ * 给"要看清边界"的场景用：正文纯黑、背景纯白、边框变实、链接变深蓝、
+ * 选中高亮换成亮黄。只改浅色下的颜色（html.lightTheme），
+ * 所以它不影响选了深色的用户（那些用户看不到这套，也就不会花）。
+ */
+html.lightTheme {
+  --primary-text-color: #000000;
+  --comment-text-color: #000000;
+  --deemphasized-text-color: #1a1a1a;
+  --error-text-color: #b00020;
+  --link-color: #0000cc;
+
+  --background-color-primary: #ffffff;
+  --background-color-secondary: #f6f6f6;
+  --background-color-tertiary: #e9e9e9;
+
+  --border-color: #444444;
+  --selection-background-color: #ffe066;
+  --table-header-background-color: #e2e2e2;
+  --table-subheader-background-color: #efefef;
+  --chip-background-color: #e9e9e9;
+  --dialog-background-color: #ffffff;
+}

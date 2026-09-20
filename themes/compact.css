@@ -1,0 +1,37 @@
+/* compact —— 紧凑、扁平。
+ *
+ * 只动**密度**（字号/行高/间距/圆角/阴影），一个颜色都不动 ——
+ * 所以它能和浅色、深色、以及用户自己的深浅色偏好共存。
+ * 效果：正文 14px→13px、行高 20px→18px、间距整体收紧、圆角 4px→2px、
+ *       去掉浮层阴影（公司那种"简洁"的观感主要来自这几条）。
+ */
+html {
+  /* 字号 / 行高 */
+  --font-size-normal: 0.929rem;   /* 14px -> 13px */
+  --line-height-normal: 1.286rem; /* 20px -> 18px */
+  --font-size-small: 0.857rem;    /* 12px，保持 */
+  --line-height-small: 1.143rem;
+  --font-size-mono: 0.857rem;
+  --line-height-mono: 1.214rem;
+  --font-size-h3: 1.071rem;       /* 16px -> 15px */
+  --font-size-h2: 1.214rem;       /* 18px -> 17px */
+  --font-size-h1: 1.429rem;       /* 22px -> 20px */
+  --line-height-h3: 1.571rem;
+  --line-height-h2: 1.786rem;
+  --line-height-h1: 2rem;
+
+  /* 间距：整体收紧一档 */
+  --spacing-s: 3px;
+  --spacing-m: 6px;
+  --spacing-l: 9px;
+  --spacing-xl: 12px;
+  --spacing-xxl: 18px;
+
+  /* 扁平：直角 + 无浮层阴影 */
+  --border-radius: 2px;
+  --elevation-level-1: none;
+  --elevation-level-2: none;
+  --elevation-level-3: none;
+  --elevation-level-4: none;
+  --elevation-level-5: none;
+}
