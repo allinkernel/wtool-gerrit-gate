@@ -1,6 +1,6 @@
 # env.zsh —— 检视闸门的客户端命令（zsh 版）
 #
-# 由 wtool 的块 source：WTOOL_PROJECT_DIR = ~/.wtool/links/tools/gerrit-gate。
+# 由 wtool 的块 source：WTOOL_PROJECT_DIR = ~/.wtool/wtool-work-dir/links/tools/gerrit-gate。
 # 提供：
 #   ggcp <change> [patchset]   把 gerrit 上的某个提交（指定 patchset）抓回本地、cd 到对应仓库、cherry-pick
 #   gchk <change>              看它 +2 了没 / merged 了没（退出码 0 = 可以推 main）
@@ -13,8 +13,8 @@
 #
 # env.bash 是等价的一份（给没装 zsh 的机器）。两份必须同改。
 
-# 工具位置：本项目根（install 之后 ~/.wtool/links/tools/gerrit-gate 指向它）
-GERRIT_GATE_DIR=${WTOOL_PROJECT_DIR:-$HOME/.wtool/links/tools/gerrit-gate}
+# 工具位置：本项目根（install 之后 ~/.wtool/wtool-work-dir/links/tools/gerrit-gate 指向它）
+GERRIT_GATE_DIR=${WTOOL_PROJECT_DIR:-$HOME/.wtool/wtool-work-dir/links/tools/gerrit-gate}
 
 _gg_manifest_tool () { print -r -- ${GERRIT_GATE_DIR}/my_repo.py }
 _gg_query_tool ()    { print -r -- ${GERRIT_GATE_DIR}/gerrit_query.py }

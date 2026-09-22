@@ -1,12 +1,12 @@
 # env.bash —— 检视闸门的客户端命令（bash 版，和 env.zsh 等价）
 #
-# 由 wtool 的块 source：WTOOL_PROJECT_DIR = ~/.wtool/links/tools/gerrit-gate。
+# 由 wtool 的块 source：WTOOL_PROJECT_DIR = ~/.wtool/wtool-work-dir/links/tools/gerrit-gate。
 # 提供 ggcp / gchk / gq / gpush（用法见 env.zsh 顶部注释或 README）。
 #
 # 两份必须同改；tests/env_test.sh 会用同一张用例表把两个 shell 都跑一遍。
 
 # 工具位置
-GERRIT_GATE_DIR=${WTOOL_PROJECT_DIR:-$HOME/.wtool/links/tools/gerrit-gate}
+GERRIT_GATE_DIR=${WTOOL_PROJECT_DIR:-$HOME/.wtool/wtool-work-dir/links/tools/gerrit-gate}
 
 # ---------------------------------------------------------------- gerrit 客户端
 # 往上找含 .repo 的目录（自包含：不依赖 wtool 的 tools/repo —— 本项目独立可用）

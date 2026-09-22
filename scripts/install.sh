@@ -16,7 +16,7 @@ set -eu
 
 say() { printf '%s: %s\n' 'tools/gerrit-gate' "$*"; }
 
-link_dir="$HOME/.wtool/links/tools/gerrit-gate"
+link_dir="$HOME/.wtool/wtool-work-dir/links/tools/gerrit-gate"
 src="$link_dir/bin/gerrit-gate"
 dst="${WTOOL_PREFIX:-$HOME/.wtool/usr}/bin/gerrit-gate"
 
