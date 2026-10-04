@@ -10,15 +10,15 @@
   docker 命名卷里，见 README 的"占地"一节）。
 
   两件事分开表达：
-    * <env>  —— 客户端命令（ggcp/gchk/gq/gpush）。zsh 和 bash 各一份，
+    * <zshrc>/<bashrc> —— 客户端命令（ggcp/gchk/gq/gpush）。zsh 和 bash 各一份，
                  内容等价（受众里有人没装 zsh）。
     * scripts/install.sh —— wtool.xml 表达不了的那件事：把 bin/gerrit-gate
                  软链进 $WTOOL_PREFIX/bin（那目录由引擎保证在 PATH 上）。
 -->
 <wtool schema="1" id="tools/gerrit-gate" priority="46">
 
-  <env src="env.zsh"  shells="zsh"/>
-  <env src="env.bash" shells="bash"/>
+  <zshrc  src="env.zsh"/>
+  <bashrc src="env.bash"/>
 
   <!-- 没有构建步骤：源码包就是产物 -->
   <publish kind="source"/>
