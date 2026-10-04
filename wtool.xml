@@ -15,7 +15,7 @@
     * scripts/install.sh —— wtool.xml 表达不了的那件事：把 bin/gerrit-gate
                  软链进 $WTOOL_PREFIX/bin（那目录由引擎保证在 PATH 上）。
 -->
-<wtool schema="1" id="tools/gerrit-gate" priority="46">
+<wtool schema="1" priority="46">
 
   <zshrc  src="env.zsh"/>
   <bashrc src="env.bash"/>
