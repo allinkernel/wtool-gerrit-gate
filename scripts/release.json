@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "project": "tools/gerrit-gate",
+  "repo": "allinkernel/wtool-gerrit-gate",
+  "tag": "ds_dev-2026-10-07",
+  "base_url": "https://github.com/allinkernel/wtool-gerrit-gate/releases/download/ds_dev-2026-10-07",
+  "commit": "51ec3891b2e13c04014108743ea3757d32c74368",
+  "packed_at": "2026-10-08T01:05:09+0800",
+  "published_at": "2026-10-08T01:07:33+08:00",
+  "wtool_engine": "1.0.0",
+  "dirty": false,
+  "volume_size": "32M",
+  "declare": [
+    "wtool.xml",
+    "env.zsh",
+    "env.bash"
+  ],
+  "targets": [],
+  "assets": [
+    {
+      "name": "dist.json",
+      "role": "",
+      "bytes": 935,
+      "sha256": "bcb53aca77d3285ecc4649bd90666bfa9790ede886f9abbc296d745039464fe8"
+    },
+    {
+      "name": "release-hash.txt",
+      "role": "",
+      "bytes": 78,
+      "sha256": "c0bd6dcf7278a7af50aaebffad607c4f5874c112fe7b043fdc776dd5d604b5df"
+    },
+    {
+      "name": "release.zip",
+      "role": "release",
+      "bytes": 10043,
+      "sha256": "c1f5b3fb3aec37f65de0aa7b6fffe6d130e5d9b1dc9dccaeddee7b8294685a28"
+    },
+    {
+      "name": "源码-hash.txt",
+      "role": "",
+      "bytes": 77,
+      "sha256": "862da9aafd2d4306d9942a6757e4c2711b4d8f530320c7bc74497346af6f7038"
+    },
+    {
+      "name": "源码.zip",
+      "role": "source",
+      "bytes": 57353,
+      "sha256": "3e9af5c10f699dc7089bcf7f27f203e25a7d5f0cec0e5dfd13d7f21990d589a8"
+    }
+  ],
+  "how": "wtool download-release tools/gerrit-gate   # 下到项目的 __release/（按本文件的 sha256 校验）\nwtool unpack-release tools/gerrit-gate     # 拼分卷 + 解到 __output/\nwtool install tools/gerrit-gate            # 装到本机"
+}
